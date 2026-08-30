@@ -16,6 +16,9 @@ def generate_endpoint_text_document(connection: APIConnection, endpoint: APIEndp
         f"Path: {endpoint.path}",
     ]
 
+    if connection.application_id:
+        lines.append(f"Application ID: {connection.application_id}")
+
     if endpoint.operation_id:
         lines.append(f"Operation ID: {endpoint.operation_id}")
 
@@ -47,9 +50,9 @@ def generate_endpoint_metadata(
 ) -> Dict[str, Any]:
     """
     Extracts structured metadata associated with each endpoint vector document.
-    Enables strict user, connection, method, and path filtering.
+    Enables strict user, application, connection, method, and path filtering.
     """
-    return {
+    meta = {
         "owner_id": str(owner_id),
         "connection_id": str(connection.id),
         "endpoint_id": str(endpoint.id),
@@ -59,3 +62,6 @@ def generate_endpoint_metadata(
         "base_url": connection.base_url,
         "connection_name": connection.name,
     }
+    if connection.application_id:
+        meta["application_id"] = str(connection.application_id)
+    return meta

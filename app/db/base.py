@@ -76,6 +76,46 @@ class User(Base):
     action_proposals: Mapped[List["APIActionProposal"]] = relationship(
         "APIActionProposal", back_populates="user", cascade="all, delete-orphan"
     )
+    applications: Mapped[List["Application"]] = relationship(
+        "Application", back_populates="owner", cascade="all, delete-orphan"
+    )
+
+
+class Application(Base):
+    """
+    Application entity acting as the top-level organizational boundary for user resources.
+    """
+
+    __tablename__ = "applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        index=True,
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    owner: Mapped["User"] = relationship("User", back_populates="applications")
+    specifications: Mapped[List["APISpecification"]] = relationship(
+        "APISpecification", back_populates="application"
+    )
+    connections: Mapped[List["APIConnection"]] = relationship(
+        "APIConnection", back_populates="application"
+    )
+    execution_logs: Mapped[List["APIExecutionLog"]] = relationship(
+        "APIExecutionLog", back_populates="application"
+    )
+    action_proposals: Mapped[List["APIActionProposal"]] = relationship(
+        "APIActionProposal", back_populates="application"
+    )
 
 
 class APISpecification(Base):
@@ -97,6 +137,12 @@ class APISpecification(Base):
         nullable=False,
         index=True,
     )
+    application_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     version: Mapped[str] = mapped_column(String(50), nullable=False, default="1.0.0")
@@ -107,6 +153,7 @@ class APISpecification(Base):
     raw_spec: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     owner: Mapped["User"] = relationship("User", back_populates="specifications")
+    application: Mapped[Optional["Application"]] = relationship("Application", back_populates="specifications")
     operations: Mapped[List["APIOperation"]] = relationship(
         "APIOperation", back_populates="specification", cascade="all, delete-orphan"
     )
@@ -144,7 +191,7 @@ class APIOperation(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parameters: Mapped[List[Any]] = mapped_column(JSON, nullable=False, default=list)
     request_body: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    responses: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    responses: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, defaultdict=dict) if False else mapped_column(JSON, nullable=False, default=dict)
     security: Mapped[List[Any]] = mapped_column(JSON, nullable=False, default=list)
 
     specification: Mapped["APISpecification"] = relationship("APISpecification", back_populates="operations")
@@ -205,6 +252,12 @@ class APIConnection(Base):
         nullable=False,
         index=True,
     )
+    application_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -212,6 +265,7 @@ class APIConnection(Base):
 
     owner: Mapped["User"] = relationship("User", back_populates="connections")
     specification: Mapped["APISpecification"] = relationship("APISpecification", back_populates="connections")
+    application: Mapped[Optional["Application"]] = relationship("Application", back_populates="connections")
     endpoints: Mapped[List["APIEndpoint"]] = relationship(
         "APIEndpoint", back_populates="connection", cascade="all, delete-orphan"
     )
@@ -293,6 +347,12 @@ class APIExecutionLog(Base):
         nullable=False,
         index=True,
     )
+    application_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     http_method: Mapped[str] = mapped_column(String(10), nullable=False)
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
     request_headers: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -307,6 +367,7 @@ class APIExecutionLog(Base):
     user: Mapped["User"] = relationship("User", back_populates="execution_logs")
     connection: Mapped["APIConnection"] = relationship("APIConnection", back_populates="execution_logs")
     endpoint: Mapped["APIEndpoint"] = relationship("APIEndpoint", back_populates="execution_logs")
+    application: Mapped[Optional["Application"]] = relationship("Application", back_populates="execution_logs")
 
 
 class APIActionProposal(Base):
@@ -341,6 +402,12 @@ class APIActionProposal(Base):
         nullable=False,
         index=True,
     )
+    application_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     intent_summary: Mapped[str] = mapped_column(Text, nullable=False)
     http_method: Mapped[str] = mapped_column(String(10), nullable=False)
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -355,3 +422,4 @@ class APIActionProposal(Base):
     user: Mapped["User"] = relationship("User", back_populates="action_proposals")
     connection: Mapped["APIConnection"] = relationship("APIConnection", back_populates="action_proposals")
     endpoint: Mapped["APIEndpoint"] = relationship("APIEndpoint", back_populates="action_proposals")
+    application: Mapped[Optional["Application"]] = relationship("Application", back_populates="action_proposals")

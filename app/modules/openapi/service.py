@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.exceptions import BaseAppException
+from app.db.base import Application
 from app.modules.openapi.models import APISpecification, APIOperation, APISecurityScheme
 from app.modules.openapi.parser import (
     parse_raw_spec_content,
@@ -18,8 +19,8 @@ from app.modules.openapi.ssrf import validate_url_against_ssrf
 class FetchSpecException(BaseAppException):
     """Exception raised when fetching the remote OpenAPI specification fails."""
 
-    def __init__(self, message: str = "Failed to fetch specification from URL") -> None:
-        super().__init__(message=message, status_code=400)
+    def __init__(self, message: str = "Failed to fetch specification from URL", status_code: int = 400) -> None:
+        super().__init__(message=message, status_code=status_code)
 
 
 def fetch_spec_from_url(url: str) -> str:
@@ -59,15 +60,30 @@ def discover_and_store_spec(
     db: Session,
     owner_id: uuid.UUID,
     url: str,
+    application_id: Optional[uuid.UUID] = None,
     raw_content: Optional[str] = None,
 ) -> APISpecification:
     """
     Core discovery workflow:
-    1. Fetch spec if raw_content not directly supplied (or validate URL against SSRF either way)
-    2. Parse spec JSON/YAML
-    3. Extract metadata, operations, security schemes
-    4. Store in database
+    1. If application_id provided, verify application exists and belongs to owner_id.
+    2. Fetch spec if raw_content not directly supplied (or validate URL against SSRF either way)
+    3. Parse spec JSON/YAML
+    4. Extract metadata, operations, security schemes
+    5. Store in database associated with application_id
     """
+    if application_id is not None:
+        app_record = db.execute(
+            select(Application).where(
+                Application.id == application_id,
+                Application.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if not app_record:
+            raise FetchSpecException(
+                message="Application not found or access denied",
+                status_code=404,
+            )
+
     if not raw_content:
         raw_content = fetch_spec_from_url(url)
     else:
@@ -81,6 +97,7 @@ def discover_and_store_spec(
 
     spec_record = APISpecification(
         owner_id=owner_id,
+        application_id=application_id,
         title=title,
         description=description,
         version=version,
@@ -126,13 +143,16 @@ def discover_and_store_spec(
     return spec_record
 
 
-def get_specifications_by_owner(db: Session, owner_id: uuid.UUID) -> List[APISpecification]:
-    """Retrieves all specifications discovered by a user."""
-    return list(
-        db.execute(
-            select(APISpecification).where(APISpecification.owner_id == owner_id)
-        ).scalars().all()
-    )
+def get_specifications_by_owner(
+    db: Session,
+    owner_id: uuid.UUID,
+    application_id: Optional[uuid.UUID] = None,
+) -> List[APISpecification]:
+    """Retrieves specifications discovered by a user, optionally filtered by application_id."""
+    stmt = select(APISpecification).where(APISpecification.owner_id == owner_id)
+    if application_id is not None:
+        stmt = stmt.where(APISpecification.application_id == application_id)
+    return list(db.execute(stmt).scalars().all())
 
 
 def get_specification_by_id(

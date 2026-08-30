@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.exceptions import BaseAppException
+from app.db.base import Application
 from app.modules.execution.builder import (
     validate_and_build_target_url,
     mask_sensitive_headers,
@@ -37,13 +38,37 @@ def create_proposal(
     """
     PROPOSE & VALIDATE:
     1. Validates endpoint exists in user's registered catalog.
-    2. Validates parameters and constructs target URL.
-    3. Masks sensitive headers.
-    4. Creates a pending proposal with expiration timestamp.
+    2. Enforces application matching & user ownership if application_id is provided.
+    3. Validates parameters and constructs target URL.
+    4. Masks sensitive headers.
+    5. Creates a pending proposal with expiration timestamp.
     """
     connection, endpoint = get_user_catalog_endpoint(
         db=db, owner_id=owner_id, endpoint_id=req.endpoint_id
     )
+
+    effective_app_id = req.application_id or connection.application_id
+
+    # If application_id explicitly provided, verify ownership & consistency
+    if req.application_id is not None:
+        app_record = db.execute(
+            select(Application).where(
+                Application.id == req.application_id,
+                Application.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if not app_record:
+            raise VerificationException(
+                message="Application not found or access denied",
+                status_code=404,
+            )
+
+    if connection.application_id is not None and req.application_id is not None:
+        if connection.application_id != req.application_id:
+            raise VerificationException(
+                message=f"Mismatched application: Endpoint connection belongs to Application {connection.application_id}, but proposal requested Application {req.application_id}",
+                status_code=400,
+            )
 
     target_url = validate_and_build_target_url(
         connection=connection,
@@ -60,6 +85,7 @@ def create_proposal(
         user_id=owner_id,
         connection_id=connection.id,
         endpoint_id=endpoint.id,
+        application_id=effective_app_id,
         intent_summary=req.intent_summary,
         http_method=endpoint.method.upper(),
         target_url=target_url,
@@ -97,7 +123,6 @@ def get_proposal_by_id(
             status_code=404,
         )
 
-    # Auto-expire if pending and past expiration time
     expires_at = (
         proposal.expires_at.replace(tzinfo=timezone.utc)
         if proposal.expires_at.tzinfo is None
@@ -180,7 +205,7 @@ def execute_confirmed_proposal(
     if proposal.status == "executed":
         raise VerificationException(message="Action proposal has already been executed", status_code=400)
 
-    # Execute request
+    # Execute request via execution service
     exec_req = ExecutionExecuteRequest(
         endpoint_id=proposal.endpoint_id,
         path_params=proposal.path_params,
@@ -203,17 +228,15 @@ def execute_confirmed_proposal(
 def list_user_proposals(
     db: Session,
     owner_id: uuid.UUID,
+    application_id: Optional[uuid.UUID] = None,
     limit: int = 50,
 ) -> List[APIActionProposal]:
-    """Lists user action proposals."""
-    return list(
-        db.execute(
-            select(APIActionProposal)
-            .where(APIActionProposal.user_id == owner_id)
-            .order_by(APIActionProposal.created_at.desc())
-            .limit(limit)
-        ).scalars().all()
-    )
+    """Lists user action proposals, optionally filtered by application_id."""
+    stmt = select(APIActionProposal).where(APIActionProposal.user_id == owner_id)
+    if application_id is not None:
+        stmt = stmt.where(APIActionProposal.application_id == application_id)
+    stmt = stmt.order_by(APIActionProposal.created_at.desc()).limit(limit)
+    return list(db.execute(stmt).scalars().all())
 
 
 def _map_proposal_to_response(p: APIActionProposal) -> ActionProposalResponse:
@@ -222,6 +245,7 @@ def _map_proposal_to_response(p: APIActionProposal) -> ActionProposalResponse:
         user_id=p.user_id,
         connection_id=p.connection_id,
         endpoint_id=p.endpoint_id,
+        application_id=p.application_id,
         intent_summary=p.intent_summary,
         http_method=p.http_method,
         target_url=p.target_url,

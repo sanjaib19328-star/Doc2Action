@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { agentApi } from '../../api/agent';
 import { verificationApi } from '../../api/verification';
+import { useApplication } from '../../context/ApplicationContext';
+import { NoApplicationSelected } from '../../components/common/NoApplicationSelected';
 import type { ActionProposalResponse } from '../../types/api';
 import {
   Bot,
@@ -13,7 +15,9 @@ import {
   Clock,
   Terminal,
   Server,
-  Cpu
+  Cpu,
+  Layers,
+  Loader2,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -28,12 +32,14 @@ interface ChatMessage {
 }
 
 export const AgentPage: React.FC = () => {
+  const { selectedApplication, selectedApplicationId, isLoading: appLoading } = useApplication();
+
   const [inputQuery, setQueryInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-welcome',
       sender: 'agent',
-      text: 'Hello! I am your Doc2Action AI Agent. State your intent (e.g. "Find pets with available status" or "Get store inventory"), and I will perform RAG catalog search, analyze missing parameters, and generate an Action Proposal for your human review.',
+      text: 'Hello! I am your Doc2Action AI Agent. State your intent (e.g. "Find pets with status=available" or "Get customer orders"), and I will perform RAG catalog search within your active application, analyze missing parameters, and generate an Action Proposal for your human review.',
       timestamp: new Date().toLocaleTimeString(),
       step: 'IDLE',
       decisionType: 'INFORMATION',
@@ -52,6 +58,10 @@ export const AgentPage: React.FC = () => {
   const [activeProposal, setActiveProposal] = useState<ActionProposalResponse | null>(null);
   const [llmActive, setLlmActive] = useState<boolean>(false);
 
+  if (!appLoading && !selectedApplicationId) {
+    return <NoApplicationSelected moduleName="AI Agent Workspace" />;
+  }
+
   const addMessage = (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     const newMsg: ChatMessage = {
       ...msg,
@@ -63,7 +73,7 @@ export const AgentPage: React.FC = () => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputQuery.trim() || processing) return;
+    if (!inputQuery.trim() || processing || !selectedApplicationId) return;
 
     const userText = inputQuery.trim();
     setQueryInput('');
@@ -75,7 +85,10 @@ export const AgentPage: React.FC = () => {
     });
 
     try {
-      const response = await agentApi.processQuery({ query: userText });
+      const response = await agentApi.processQuery({
+        query: userText,
+        application_id: selectedApplicationId,
+      });
       
       setLlmActive(response.llm_configured);
       setCurrentStep(response.step);
@@ -108,7 +121,7 @@ export const AgentPage: React.FC = () => {
 
   const handleProvideParameters = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEndpoint || processing) return;
+    if (!selectedEndpoint || processing || !selectedApplicationId) return;
 
     setProcessing(true);
     const paramSummary = Object.entries(paramInputs).map(([k, v]) => `${k}=${v}`).join(', ');
@@ -120,7 +133,10 @@ export const AgentPage: React.FC = () => {
     });
 
     try {
-      const response = await agentApi.processQuery({ query: combinedQuery });
+      const response = await agentApi.processQuery({
+        query: combinedQuery,
+        application_id: selectedApplicationId,
+      });
       
       setCurrentStep(response.step);
       setMissingParams(response.missing_parameters || []);
@@ -243,7 +259,7 @@ export const AgentPage: React.FC = () => {
       WAIT_FOR_CONFIRMATION: { label: 'Confirmation Required', color: 'bg-amber-100 text-amber-800 border-amber-200' },
       EXECUTE: { label: 'Executing', color: 'bg-blue-100 text-blue-800 border-blue-200' },
       RESULT: { label: 'Execution Result', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-      ERROR: { label: 'Error', color: 'bg-red-100 text-red-800 border-red-200' },
+      ERROR: { label: 'Error', color: 'bg-rose-100 text-rose-800 border-rose-200' },
     };
 
     const b = badgeMap[type] || { label: type, color: 'bg-slate-100 text-slate-700 border-slate-200' };
@@ -265,8 +281,8 @@ export const AgentPage: React.FC = () => {
       CONFIRMED: 'bg-sky-100 text-sky-800 border-sky-200',
       EXECUTING: 'bg-blue-100 text-blue-800 border-blue-200',
       COMPLETED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      REJECTED: 'bg-red-100 text-red-800 border-red-200',
-      FAILED: 'bg-red-100 text-red-800 border-red-200',
+      REJECTED: 'bg-rose-100 text-rose-800 border-rose-200',
+      FAILED: 'bg-rose-100 text-rose-800 border-rose-200',
     };
 
     return (
@@ -277,43 +293,43 @@ export const AgentPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">AI Agent Workspace</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Real Backend Agent Router + RAG Knowledge Base + Human-in-the-Loop Action Proposals.
+          <div className="flex items-center space-x-2">
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">AI Agent Workspace</h1>
+            {selectedApplication && (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-sky-100 text-sky-800 tracking-wider flex items-center space-x-1">
+                <Layers className="w-3 h-3 text-sky-600 mr-1" />
+                {selectedApplication.name}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Real Gemini LLM + RAG Knowledge Base + Human-in-the-Loop Action Proposal workflow inside application <span className="font-semibold text-slate-700">"{selectedApplication?.name}"</span>.
           </p>
         </div>
 
-        {/* Gemini API Key Status Badge */}
         <div className="flex items-center space-x-2">
-          {llmActive ? (
-            <span className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
-              <Cpu className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Gemini LLM Active</span>
-            </span>
-          ) : (
-            <span className="px-3 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
-              <Cpu className="w-3.5 h-3.5 text-sky-600" />
-              <span>RAG Agent Active</span>
-            </span>
-          )}
+          <span className="px-3 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
+            <Cpu className="w-3.5 h-3.5 text-sky-600" />
+            <span>FastAPI Agent Core</span>
+          </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chat Feed */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-[680px]">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-xs flex flex-col h-[680px]">
           {/* Header */}
-          <div className="p-4 bg-slate-900 text-white rounded-t-xl flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center text-white">
-                <Bot className="w-5 h-5" />
+          <div className="p-4 bg-slate-900 text-white rounded-t-2xl flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-xl bg-sky-500 flex items-center justify-center text-white font-bold text-xs shadow-xs">
+                <Bot className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm font-bold">Doc2Action API Agent</h2>
-                <p className="text-[10px] text-slate-400">RAG Catalog Vector Store + Verification Engine</p>
+                <h2 className="text-xs font-bold leading-tight">Doc2Action API Agent</h2>
+                <p className="text-[10px] text-slate-400 font-mono">App Context: {selectedApplication?.name}</p>
               </div>
             </div>
             {renderStepBadge(currentStep)}
@@ -327,9 +343,9 @@ export const AgentPage: React.FC = () => {
                 className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-2xl p-4 rounded-xl text-xs space-y-3 ${
+                  className={`max-w-2xl p-4 rounded-2xl text-xs space-y-2.5 ${
                     m.sender === 'user'
-                      ? 'bg-sky-600 text-white rounded-br-none'
+                      ? 'bg-sky-600 text-white rounded-br-none shadow-xs'
                       : 'bg-slate-50 border border-slate-200 text-slate-800 rounded-bl-none'
                   }`}
                 >
@@ -345,13 +361,13 @@ export const AgentPage: React.FC = () => {
 
                   {/* RAG Search Hits context */}
                   {m.searchResults && m.searchResults.length > 0 && (
-                    <div className="p-3 bg-white rounded border border-slate-200 space-y-2 font-mono text-[11px] text-slate-700">
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 font-mono text-[11px] text-slate-700">
                       <p className="font-bold text-slate-900 flex items-center space-x-1">
                         <Server className="w-3.5 h-3.5 text-indigo-600" />
                         <span>RAG Context Candidates:</span>
                       </p>
                       {m.searchResults.map((hit, idx) => (
-                        <div key={idx} className="p-2 bg-slate-50 rounded border border-slate-100 flex items-center justify-between">
+                        <div key={idx} className="p-2 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
                           <span>[{hit.method}] {hit.path}</span>
                           <span className="text-indigo-600 font-bold">{(hit.score * 100).toFixed(0)}%</span>
                         </div>
@@ -361,7 +377,7 @@ export const AgentPage: React.FC = () => {
 
                   {/* Action Proposal Card in Message Feed */}
                   {m.proposal && (
-                    <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl space-y-3 text-slate-900 font-sans">
+                    <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-xl space-y-3 text-slate-900 font-sans">
                       <div className="flex items-center justify-between border-b border-amber-200 pb-2">
                         <span className="font-bold text-amber-900 flex items-center space-x-1">
                           <ShieldCheck className="w-4 h-4 text-amber-600" />
@@ -372,7 +388,7 @@ export const AgentPage: React.FC = () => {
                         </span>
                       </div>
 
-                      <div className="text-xs font-mono bg-white p-2.5 rounded border border-amber-100 space-y-1">
+                      <div className="text-xs font-mono bg-white p-2.5 rounded-lg border border-amber-100 space-y-1">
                         <p><span className="text-slate-400">Method & URL:</span> <span className="font-bold text-slate-900">[{m.proposal.http_method}] {m.proposal.target_url}</span></p>
                         <p><span className="text-slate-400">Headers:</span> {JSON.stringify(m.proposal.headers)}</p>
                         {m.proposal.body && <p><span className="text-slate-400">Body:</span> {JSON.stringify(m.proposal.body)}</p>}
@@ -385,7 +401,7 @@ export const AgentPage: React.FC = () => {
                             <button
                               onClick={() => handleConfirmProposal(m.proposal!.proposal_id)}
                               disabled={processing}
-                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded flex items-center space-x-1 disabled:opacity-50"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center space-x-1 disabled:opacity-50 transition-colors shadow-xs"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Confirm Proposal</span>
@@ -393,7 +409,7 @@ export const AgentPage: React.FC = () => {
                             <button
                               onClick={() => handleRejectProposal(m.proposal!.proposal_id)}
                               disabled={processing}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded flex items-center space-x-1 disabled:opacity-50"
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg flex items-center space-x-1 disabled:opacity-50 transition-colors shadow-xs"
                             >
                               <XCircle className="w-3.5 h-3.5" />
                               <span>Reject</span>
@@ -405,7 +421,7 @@ export const AgentPage: React.FC = () => {
                           <button
                             onClick={() => handleExecuteProposal(m.proposal!.proposal_id)}
                             disabled={processing}
-                            className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded flex items-center space-x-1 disabled:opacity-50"
+                            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg flex items-center space-x-1 disabled:opacity-50 transition-colors shadow-xs"
                           >
                             <Play className="w-3.5 h-3.5" />
                             <span>Execute Confirmed Action</span>
@@ -414,7 +430,7 @@ export const AgentPage: React.FC = () => {
                       </div>
 
                       {m.proposal.execution_result && (
-                        <div className="p-3 bg-emerald-100/60 border border-emerald-200 rounded text-xs font-mono space-y-1">
+                        <div className="p-3 bg-emerald-100/60 border border-emerald-200 rounded-lg text-xs font-mono space-y-1">
                           <p className="font-bold text-emerald-900">Execution Result:</p>
                           <pre className="p-2 bg-white rounded border border-emerald-200 text-slate-800 overflow-x-auto">
                             {JSON.stringify(m.proposal.execution_result, null, 2)}
@@ -447,7 +463,7 @@ export const AgentPage: React.FC = () => {
                         value={paramInputs[param] || ''}
                         onChange={(e) => setParamInputs({ ...paramInputs, [param]: e.target.value })}
                         placeholder={`Enter ${param}`}
-                        className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded text-xs"
+                        className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs"
                       />
                     </div>
                   ))}
@@ -455,7 +471,7 @@ export const AgentPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={processing}
-                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow-sm disabled:opacity-50"
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow-xs disabled:opacity-50"
                 >
                   Submit Parameters & Generate Proposal
                 </button>
@@ -469,25 +485,29 @@ export const AgentPage: React.FC = () => {
               type="text"
               value={inputQuery}
               onChange={(e) => setQueryInput(e.target.value)}
-              placeholder="Tell the agent what to do (e.g. Find pets with available status)..."
+              placeholder="Tell the agent what to do in this app (e.g. Find pets with status=available)..."
               disabled={processing}
-              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white"
+              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500 focus:bg-white"
             />
             <button
               type="submit"
               disabled={processing || !inputQuery.trim()}
-              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1 disabled:opacity-50 transition-colors"
+              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-xl flex items-center space-x-1.5 disabled:opacity-50 transition-colors shadow-xs"
             >
-              <Send className="w-4 h-4" />
+              {processing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
               <span>Send</span>
             </button>
           </form>
         </div>
 
         {/* Sidebar Context & State Inspection */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center space-x-2">
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center space-x-2">
               <Terminal className="w-4 h-4 text-sky-600" />
               <span>Agent State Inspection</span>
             </h2>
@@ -495,15 +515,23 @@ export const AgentPage: React.FC = () => {
 
           <div className="space-y-4 text-xs font-mono">
             <div>
+              <span className="text-slate-400 font-semibold block uppercase text-[10px]">Application Context</span>
+              <p className="font-bold text-slate-900 mt-1 font-sans flex items-center space-x-1">
+                <Layers className="w-3.5 h-3.5 text-sky-600" />
+                <span>{selectedApplication?.name}</span>
+              </p>
+            </div>
+
+            <div>
               <span className="text-slate-400 font-semibold block uppercase text-[10px]">Current Step</span>
               <div className="mt-1">{renderStepBadge(currentStep)}</div>
             </div>
 
             <div>
               <span className="text-slate-400 font-semibold block uppercase text-[10px]">Backend Engine</span>
-              <p className="font-bold text-slate-800 mt-0.5 flex items-center space-x-1">
+              <p className="font-bold text-slate-800 mt-0.5 flex items-center space-x-1 font-sans">
                 <Cpu className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{llmActive ? 'Gemini 1.5 Pro' : 'FastAPI RAG Agent Engine'}</span>
+                <span>{llmActive ? 'Gemini LLM Active' : 'FastAPI RAG Agent Engine'}</span>
               </p>
             </div>
 
@@ -513,7 +541,7 @@ export const AgentPage: React.FC = () => {
             </div>
 
             {selectedEndpoint && (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                 <span className="text-slate-400 font-semibold block uppercase text-[10px]">Target Endpoint</span>
                 <p className="font-bold text-slate-900">[{selectedEndpoint.method}] {selectedEndpoint.path}</p>
                 <p className="text-[10px] text-slate-500 font-sans">{selectedEndpoint.summary || selectedEndpoint.id}</p>
@@ -521,14 +549,14 @@ export const AgentPage: React.FC = () => {
             )}
 
             {extractedParams && Object.keys(extractedParams).length > 0 && (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                 <span className="text-slate-400 font-semibold block uppercase text-[10px]">Extracted Parameters</span>
                 <pre className="text-[10px] text-slate-700 font-mono whitespace-pre-wrap">{JSON.stringify(extractedParams, null, 2)}</pre>
               </div>
             )}
 
             {activeProposal && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
                 <span className="text-amber-800 font-semibold block uppercase text-[10px]">Active Proposal ID</span>
                 <p className="font-bold text-amber-950 truncate">{activeProposal.proposal_id}</p>
                 <p className="text-[10px] text-amber-700">Expires: {new Date(activeProposal.expires_at).toLocaleTimeString()}</p>
@@ -536,13 +564,13 @@ export const AgentPage: React.FC = () => {
             )}
           </div>
 
-          <div className="p-4 bg-sky-50/60 border border-sky-100 rounded-lg text-xs space-y-2">
+          <div className="p-4 bg-sky-50/60 border border-sky-100 rounded-xl text-xs space-y-2">
             <p className="font-bold text-sky-900 flex items-center space-x-1">
-              <Clock className="w-4 h-4 text-sky-600" />
+              <Clock className="w-3.5 h-3.5 text-sky-600" />
               <span>Human-in-the-Loop Mandate</span>
             </p>
             <p className="text-slate-600 leading-relaxed font-sans text-[11px]">
-              Doc2Action Agent will never execute requests autonomously. Every action requires explicit user confirmation via the Verification subsystem.
+              Doc2Action Agent operates strictly on the active application's catalog and will never execute requests autonomously.
             </p>
           </div>
         </div>

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CreateActionProposalRequest(BaseModel):
     endpoint_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = Field(default=None, description="Optional application ID context")
     intent_summary: str = Field(min_length=1, description="Description of expected operation")
     path_params: Dict[str, Any] = Field(default_factory=dict)
     query_params: Dict[str, Any] = Field(default_factory=dict)
@@ -21,6 +22,7 @@ class ActionProposalResponse(BaseModel):
     user_id: uuid.UUID
     connection_id: uuid.UUID
     endpoint_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = None
     intent_summary: str
     http_method: str
     target_url: str

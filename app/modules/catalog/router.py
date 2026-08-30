@@ -1,6 +1,6 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -22,7 +22,7 @@ router = APIRouter()
     response_model=APIConnectionDetailResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create API Connection from Discovered Specification",
-    description="Connects an ingested API specification and populates the API catalog endpoints.",
+    description="Connects an ingested API specification and populates the API catalog endpoints, associated with an application.",
 )
 def create_connection(
     conn_in: APIConnectionCreate,
@@ -40,13 +40,16 @@ def create_connection(
     response_model=List[APIConnectionResponse],
     status_code=status.HTTP_200_OK,
     summary="List User API Connections",
-    description="Retrieves all API connections belonging to the authenticated user.",
+    description="Retrieves all API connections belonging to the authenticated user, optionally filtered by application_id.",
 )
 def list_connections(
+    application_id: Optional[uuid.UUID] = Query(None, description="Optional application ID filter"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> List[APIConnectionResponse]:
-    return service.list_connections(db=db, owner_id=current_user.id)
+    return service.list_connections(
+        db=db, owner_id=current_user.id, application_id=application_id
+    )
 
 
 @router.get(

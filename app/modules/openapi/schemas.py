@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, ConfigDict
 
 
 class DiscoverSpecRequest(BaseModel):
     url: str
+    application_id: Optional[uuid.UUID] = None
 
 
 class APIOperationResponse(BaseModel):
@@ -41,6 +42,7 @@ class APISpecificationResponse(BaseModel):
 
     id: uuid.UUID
     owner_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = None
     title: str
     description: Optional[str] = None
     version: str

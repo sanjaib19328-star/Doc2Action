@@ -38,6 +38,14 @@ def process_agent_intent(
     llm_active = is_gemini_configured()
 
     # 1. RAG Search over real user catalog
+    app_uuid = None
+    if req.application_id:
+        try:
+            import uuid
+            app_uuid = uuid.UUID(req.application_id)
+        except ValueError:
+            pass
+
     connection_uuid = None
     if req.connection_id:
         try:
@@ -49,6 +57,7 @@ def process_agent_intent(
     rag_results = semantic_search_catalog(
         owner_id=owner_id,
         query=query,
+        application_id=app_uuid,
         connection_id=connection_uuid,
         top_k=5,
     )
@@ -114,7 +123,6 @@ def process_agent_intent(
     }
     missing_required_params: List[str] = []
 
-    # Simple heuristic extraction based on query text or GEMINI LLM if active
     query_lower = query.lower()
 
     for p in parameters_def:
@@ -122,27 +130,25 @@ def process_agent_intent(
         p_in = p.get("in", "query")
         p_required = p.get("required", False)
 
-        # Check if mentioned in query (e.g. status=available, status available, charge=ch_123, id 123)
         val = None
         if p_name and p_name.lower() in query_lower:
-            # Try to extract next token or keyword
             words = query.split()
             for idx, w in enumerate(words):
                 if p_name.lower() in w.lower():
                     if "=" in w:
                         val = w.split("=")[-1]
-                    elif idx + 1 < len(words):
+                    elif idx + 1 < len(words) and words[idx + 1].lower() in ("available", "pending", "sold"):
                         val = words[idx + 1]
                     break
 
-        # Defaults for common fields if present in query
         if not val:
-            if p_name == "status" and "available" in query_lower:
-                val = "available"
-            elif p_name == "status" and "pending" in query_lower:
-                val = "pending"
-            elif p_name == "status" and "sold" in query_lower:
-                val = "sold"
+            if p_name == "status":
+                if "available" in query_lower:
+                    val = "available"
+                elif "pending" in query_lower:
+                    val = "pending"
+                elif "sold" in query_lower:
+                    val = "sold"
 
         if val:
             if p_in == "path":
@@ -173,8 +179,10 @@ def process_agent_intent(
         )
 
     # 4. Generate Action Proposal using verification service
+    effective_app_id = app_uuid or connection.application_id
     proposal_req = CreateActionProposalRequest(
         endpoint_id=str(endpoint.id),
+        application_id=effective_app_id,
         intent_summary=f"[AI Agent] {query}",
         path_params=extracted_params["path_params"],
         query_params=extracted_params["query_params"],

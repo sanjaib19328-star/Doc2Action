@@ -1,6 +1,6 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -20,15 +20,17 @@ router = APIRouter()
     "/propose",
     response_model=ActionProposalResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Propose an API Action",
-    description="Validates target endpoint and parameters, builds preview target URL, and creates a pending action proposal.",
+    summary="Create Action Proposal (Human-in-the-Loop)",
+    description="Validates target endpoint and parameters, masks headers, and constructs a pending proposal.",
 )
-def propose_action(
-    req: CreateActionProposalRequest,
+def create_action_proposal(
+    request: CreateActionProposalRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ActionProposalResponse:
-    proposal = service.create_proposal(db=db, owner_id=current_user.id, req=req)
+    proposal = service.create_proposal(
+        db=db, owner_id=current_user.id, req=request
+    )
     return service._map_proposal_to_response(proposal)
 
 
@@ -37,14 +39,16 @@ def propose_action(
     response_model=List[ActionProposalResponse],
     status_code=status.HTTP_200_OK,
     summary="List Action Proposals",
-    description="Retrieves all action proposals for the authenticated user.",
+    description="Retrieves action proposals for the user, optionally filtered by application_id.",
 )
 def list_proposals(
-    limit: int = 50,
+    application_id: Optional[uuid.UUID] = Query(None, description="Optional application ID filter"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> List[ActionProposalResponse]:
-    proposals = service.list_user_proposals(db=db, owner_id=current_user.id, limit=limit)
+    proposals = service.list_user_proposals(
+        db=db, owner_id=current_user.id, application_id=application_id
+    )
     return [service._map_proposal_to_response(p) for p in proposals]
 
 
@@ -52,15 +56,17 @@ def list_proposals(
     "/proposals/{proposal_id}",
     response_model=ActionProposalResponse,
     status_code=status.HTTP_200_OK,
-    summary="Get Action Proposal Details",
-    description="Retrieves details and status of a specific action proposal.",
+    summary="Get Action Proposal Detail",
+    description="Retrieves a single proposal enforcing user isolation.",
 )
 def get_proposal(
     proposal_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ActionProposalResponse:
-    proposal = service.get_proposal_by_id(db=db, proposal_id=proposal_id, owner_id=current_user.id)
+    proposal = service.get_proposal_by_id(
+        db=db, proposal_id=proposal_id, owner_id=current_user.id
+    )
     return service._map_proposal_to_response(proposal)
 
 
@@ -68,15 +74,17 @@ def get_proposal(
     "/proposals/{proposal_id}/confirm",
     response_model=ActionProposalResponse,
     status_code=status.HTTP_200_OK,
-    summary="Confirm Action Proposal",
-    description="User confirms a pending action proposal.",
+    summary="Human Confirmation of Action Proposal",
+    description="Updates proposal status to confirmed.",
 )
 def confirm_proposal(
     proposal_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ActionProposalResponse:
-    proposal = service.confirm_proposal(db=db, proposal_id=proposal_id, owner_id=current_user.id)
+    proposal = service.confirm_proposal(
+        db=db, proposal_id=proposal_id, owner_id=current_user.id
+    )
     return service._map_proposal_to_response(proposal)
 
 
@@ -84,17 +92,18 @@ def confirm_proposal(
     "/proposals/{proposal_id}/reject",
     response_model=ActionProposalResponse,
     status_code=status.HTTP_200_OK,
-    summary="Reject/Cancel Action Proposal",
-    description="User rejects or cancels an action proposal.",
+    summary="Reject Action Proposal",
+    description="Rejects an action proposal.",
 )
 def reject_proposal(
     proposal_id: uuid.UUID,
-    req: RejectProposalRequest = RejectProposalRequest(),
+    body: Optional[RejectProposalRequest] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> ActionProposalResponse:
+    reason = body.reason if body else "User rejected proposal"
     proposal = service.reject_proposal(
-        db=db, proposal_id=proposal_id, owner_id=current_user.id, reason=req.reason
+        db=db, proposal_id=proposal_id, owner_id=current_user.id, reason=reason
     )
     return service._map_proposal_to_response(proposal)
 
@@ -104,7 +113,7 @@ def reject_proposal(
     response_model=ActionProposalResponse,
     status_code=status.HTTP_200_OK,
     summary="Execute Confirmed Action Proposal",
-    description="Executes a confirmed action proposal and records execution result in audit trail.",
+    description="Executes a confirmed proposal and records execution audit result.",
 )
 def execute_proposal(
     proposal_id: uuid.UUID,

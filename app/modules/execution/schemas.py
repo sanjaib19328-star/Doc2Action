@@ -36,6 +36,7 @@ class ExecutionResponse(BaseModel):
     execution_id: uuid.UUID
     connection_id: uuid.UUID
     endpoint_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = None
     method: str
     target_url: str
     status_code: Optional[int] = None

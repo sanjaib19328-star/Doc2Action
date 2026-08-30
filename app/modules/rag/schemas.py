@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class RAGSearchRequest(BaseModel):
     query: str = Field(min_length=1, description="Natural language search query")
+    application_id: Optional[uuid.UUID] = Field(default=None, description="Optional application ID filter")
     connection_id: Optional[uuid.UUID] = Field(default=None, description="Optional connection filter")
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -12,6 +13,7 @@ class RAGSearchRequest(BaseModel):
 class RAGSearchResult(BaseModel):
     endpoint_id: Optional[str] = None
     connection_id: Optional[str] = None
+    application_id: Optional[str] = None
     connection_name: Optional[str] = None
     method: Optional[str] = None
     path: Optional[str] = None

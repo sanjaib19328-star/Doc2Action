@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.exceptions import BaseAppException
+from app.db.base import Application
 from app.modules.catalog.models import APIConnection, APIEndpoint
 from app.modules.catalog.schemas import APIConnectionCreate
 from app.modules.openapi.models import APISpecification
@@ -23,7 +24,7 @@ def create_connection_from_spec(
 ) -> APIConnection:
     """
     Creates an APIConnection from an ingested APISpecification and extracts all endpoints into APIEndpoint catalog.
-    Enforces user ownership on the specification.
+    Enforces user ownership and application match validation.
     """
     spec = db.execute(
         select(APISpecification).where(
@@ -34,8 +35,32 @@ def create_connection_from_spec(
 
     if not spec:
         raise CatalogException(
-            message="Specification not found or access denied", status_code=444 or 404
+            message="Specification not found or access denied", status_code=404
         )
+
+    # Determine effective application_id
+    effective_app_id = conn_in.application_id or spec.application_id
+
+    # If an application_id was explicitly supplied, verify user ownership
+    if conn_in.application_id is not None:
+        app_record = db.execute(
+            select(Application).where(
+                Application.id == conn_in.application_id,
+                Application.owner_id == owner_id,
+            )
+        ).scalar_one_or_none()
+        if not app_record:
+            raise CatalogException(
+                message="Application not found or access denied", status_code=404
+            )
+
+    # Validate application match: if spec belongs to Application A, connection cannot claim Application B
+    if spec.application_id is not None and conn_in.application_id is not None:
+        if spec.application_id != conn_in.application_id:
+            raise CatalogException(
+                message=f"Mismatched application: Specification belongs to Application {spec.application_id}, but connection requested Application {conn_in.application_id}",
+                status_code=400,
+            )
 
     effective_name = conn_in.name or spec.title
     effective_base_url = conn_in.base_url or spec.base_url or "https://api.example.com"
@@ -43,6 +68,7 @@ def create_connection_from_spec(
     connection = APIConnection(
         owner_id=owner_id,
         specification_id=spec.id,
+        application_id=effective_app_id,
         name=effective_name,
         base_url=effective_base_url,
         is_active=True,
@@ -72,13 +98,16 @@ def create_connection_from_spec(
     return connection
 
 
-def list_connections(db: Session, owner_id: uuid.UUID) -> List[APIConnection]:
-    """Lists all API connections owned by the specified user."""
-    return list(
-        db.execute(
-            select(APIConnection).where(APIConnection.owner_id == owner_id)
-        ).scalars().all()
-    )
+def list_connections(
+    db: Session,
+    owner_id: uuid.UUID,
+    application_id: Optional[uuid.UUID] = None,
+) -> List[APIConnection]:
+    """Lists all API connections owned by the specified user, optionally filtered by application_id."""
+    stmt = select(APIConnection).where(APIConnection.owner_id == owner_id)
+    if application_id is not None:
+        stmt = stmt.where(APIConnection.application_id == application_id)
+    return list(db.execute(stmt).scalars().all())
 
 
 def get_connection_by_id(

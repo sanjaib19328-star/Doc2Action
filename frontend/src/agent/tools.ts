@@ -16,12 +16,12 @@ import type {
  * Arbitrary execution is strictly prohibited.
  */
 export const agentTools = {
-  searchApiCatalog: async (query: string, connectionId?: string): Promise<RAGSearchResult[]> => {
-    return ragApi.search({ query, connection_id: connectionId, top_k: 5 });
+  searchApiCatalog: async (query: string, applicationId?: string, connectionId?: string): Promise<RAGSearchResult[]> => {
+    return ragApi.search({ query, application_id: applicationId, connection_id: connectionId, top_k: 5 });
   },
 
-  listConnections: async (): Promise<APIConnection[]> => {
-    return catalogApi.listConnections();
+  listConnections: async (applicationId?: string): Promise<APIConnection[]> => {
+    return catalogApi.listConnections(applicationId);
   },
 
   getConnectionEndpoints: async (connectionId: string): Promise<APIEndpoint[]> => {
@@ -44,7 +44,7 @@ export const agentTools = {
     return verificationApi.executeProposal(proposalId);
   },
 
-  getExecutionLogs: async (limit = 20): Promise<ExecutionResponse[]> => {
-    return executionApi.getLogs(limit);
+  getExecutionLogs: async (applicationId?: string, limit = 20): Promise<ExecutionResponse[]> => {
+    return executionApi.getLogs(applicationId, limit);
   },
 };

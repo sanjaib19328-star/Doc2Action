@@ -21,8 +21,12 @@ export const executionApi = {
     });
   },
 
-  getLogs: (limit = 50): Promise<ExecutionResponse[]> => {
-    return apiRequest<ExecutionResponse[]>(`/execution/logs?limit=${limit}`, {
+  getLogs: (applicationId?: string | null, limit = 50): Promise<ExecutionResponse[]> => {
+    let url = `/execution/logs?limit=${limit}`;
+    if (applicationId) {
+      url += `&application_id=${encodeURIComponent(applicationId)}`;
+    }
+    return apiRequest<ExecutionResponse[]>(url, {
       method: 'GET',
     });
   },

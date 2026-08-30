@@ -157,11 +157,12 @@ def execute_api_call(
         exec_status = "failed"
         error_msg = f"Execution failed: {str(exc)}"
 
-    # Record execution log in database with masked headers
+    # Record execution log in database with masked headers and application_id
     log_entry = APIExecutionLog(
         user_id=owner_id,
         connection_id=connection.id,
         endpoint_id=endpoint.id,
+        application_id=connection.application_id,
         http_method=endpoint.method.upper(),
         target_url=target_url,
         request_headers=masked_headers,
@@ -181,6 +182,7 @@ def execute_api_call(
         execution_id=log_entry.id,
         connection_id=connection.id,
         endpoint_id=endpoint.id,
+        application_id=connection.application_id,
         method=endpoint.method.upper(),
         target_url=target_url,
         status_code=status_code,
@@ -198,14 +200,12 @@ def execute_api_call(
 def list_user_execution_logs(
     db: Session,
     owner_id: uuid.UUID,
+    application_id: Optional[uuid.UUID] = None,
     limit: int = 50,
 ) -> List[APIExecutionLog]:
-    """Retrieves execution audit logs for the authenticated user."""
-    return list(
-        db.execute(
-            select(APIExecutionLog)
-            .where(APIExecutionLog.user_id == owner_id)
-            .order_by(APIExecutionLog.created_at.desc())
-            .limit(limit)
-        ).scalars().all()
-    )
+    """Retrieves execution audit logs for the authenticated user, optionally filtered by application_id."""
+    stmt = select(APIExecutionLog).where(APIExecutionLog.user_id == owner_id)
+    if application_id is not None:
+        stmt = stmt.where(APIExecutionLog.application_id == application_id)
+    stmt = stmt.order_by(APIExecutionLog.created_at.desc()).limit(limit)
+    return list(db.execute(stmt).scalars().all())

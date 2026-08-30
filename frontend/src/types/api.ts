@@ -25,9 +25,30 @@ export interface UserLoginRequest {
   password: string;
 }
 
+// Application Types
+export interface Application {
+  id: string;
+  owner_id: string;
+  name: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplicationCreate {
+  name: string;
+  description?: string | null;
+}
+
+export interface ApplicationUpdate {
+  name?: string | null;
+  description?: string | null;
+}
+
 // OpenAPI Discovery Types
 export interface DiscoverSpecRequest {
   url: string;
+  application_id?: string | null;
 }
 
 export interface APIOperation {
@@ -57,6 +78,7 @@ export interface APISecurityScheme {
 export interface APISpecification {
   id: string;
   owner_id: string;
+  application_id?: string | null;
   title: string;
   description?: string | null;
   version: string;
@@ -76,6 +98,7 @@ export interface APISpecificationDetail extends APISpecification {
 // API Catalog Types
 export interface APIConnectionCreate {
   specification_id: string;
+  application_id?: string | null;
   name?: string;
   base_url?: string;
   auth_config?: Record<string, any>;
@@ -100,6 +123,7 @@ export interface APIEndpoint {
 export interface APIConnection {
   id: string;
   owner_id: string;
+  application_id?: string | null;
   specification_id: string;
   name: string;
   base_url: string;
@@ -116,7 +140,8 @@ export interface APIConnectionDetail extends APIConnection {
 // RAG Types
 export interface RAGSearchRequest {
   query: string;
-  connection_id?: string;
+  application_id?: string | null;
+  connection_id?: string | null;
   top_k?: number;
 }
 
@@ -172,6 +197,7 @@ export interface ExecutionResponse {
   execution_id: string;
   connection_id: string;
   endpoint_id: string;
+  application_id?: string | null;
   method: string;
   target_url: string;
   status_code?: number | null;
@@ -188,6 +214,7 @@ export interface ExecutionResponse {
 // Human-in-the-loop Verification Types
 export interface CreateActionProposalRequest {
   endpoint_id: string;
+  application_id?: string | null;
   intent_summary: string;
   path_params?: Record<string, any>;
   query_params?: Record<string, any>;
@@ -200,6 +227,7 @@ export interface ActionProposalResponse {
   proposal_id: string;
   user_id: string;
   connection_id: string;
+  application_id?: string | null;
   endpoint_id: string;
   intent_summary: string;
   http_method: string;

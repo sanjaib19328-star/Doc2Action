@@ -14,8 +14,9 @@ export const catalogApi = {
     });
   },
 
-  listConnections: (): Promise<APIConnection[]> => {
-    return apiRequest<APIConnection[]>('/catalog/connections', {
+  listConnections: (applicationId?: string | null): Promise<APIConnection[]> => {
+    const query = applicationId ? `?application_id=${encodeURIComponent(applicationId)}` : '';
+    return apiRequest<APIConnection[]>(`/catalog/connections${query}`, {
       method: 'GET',
     });
   },

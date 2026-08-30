@@ -3,6 +3,7 @@ import type { ActionProposalResponse } from '../types/api';
 
 export interface AgentProcessBackendRequest {
   query: string;
+  application_id?: string | null;
   connection_id?: string;
   conversation_state?: Record<string, any>;
 }

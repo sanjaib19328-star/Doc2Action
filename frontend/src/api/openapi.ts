@@ -13,8 +13,9 @@ export const openApiApi = {
     });
   },
 
-  listSpecifications: (): Promise<APISpecification[]> => {
-    return apiRequest<APISpecification[]>('/openapi/specifications', {
+  listSpecifications: (applicationId?: string | null): Promise<APISpecification[]> => {
+    const query = applicationId ? `?application_id=${encodeURIComponent(applicationId)}` : '';
+    return apiRequest<APISpecification[]>(`/openapi/specifications${query}`, {
       method: 'GET',
     });
   },

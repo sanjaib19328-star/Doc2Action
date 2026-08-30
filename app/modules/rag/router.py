@@ -87,7 +87,7 @@ def delete_index(
     response_model=List[RAGSearchResult],
     status_code=status.HTTP_200_OK,
     summary="Semantic Search API Catalog",
-    description="Performs vector similarity search across indexed API endpoints for the user.",
+    description="Performs vector similarity search across indexed API endpoints for the user, optionally filtered by application_id.",
 )
 def search_catalog(
     search_in: RAGSearchRequest,
@@ -96,6 +96,7 @@ def search_catalog(
     results = service.semantic_search_catalog(
         owner_id=current_user.id,
         query=search_in.query,
+        application_id=search_in.application_id,
         connection_id=search_in.connection_id,
         top_k=search_in.top_k,
     )

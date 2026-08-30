@@ -1,6 +1,6 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -52,14 +52,17 @@ def execute_request(
     response_model=List[ExecutionResponse],
     status_code=status.HTTP_200_OK,
     summary="Get User API Execution Logs",
-    description="Retrieves masked audit logs for executed API calls for the user.",
+    description="Retrieves masked audit logs for executed API calls for the user, optionally filtered by application_id.",
 )
 def get_execution_logs(
-    limit: int = 50,
+    application_id: Optional[uuid.UUID] = Query(None, description="Optional application ID filter"),
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> List[ExecutionResponse]:
-    logs = service.list_user_execution_logs(db=db, owner_id=current_user.id, limit=limit)
+    logs = service.list_user_execution_logs(
+        db=db, owner_id=current_user.id, application_id=application_id, limit=limit
+    )
     
     # Map ORM logs to response schema
     results = []
@@ -69,6 +72,7 @@ def get_execution_logs(
                 execution_id=log.id,
                 connection_id=log.connection_id,
                 endpoint_id=log.endpoint_id,
+                application_id=log.application_id,
                 method=log.http_method,
                 target_url=log.target_url,
                 status_code=log.response_status_code,

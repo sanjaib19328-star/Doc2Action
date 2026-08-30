@@ -19,6 +19,9 @@ frontend/.env
 frontend/.env.*
 !frontend/.env.example
 
+# Verification & scratch scripts
+scripts/
+
 # IDE & OS
 .vscode/
 .idea/

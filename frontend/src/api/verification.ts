@@ -13,8 +13,12 @@ export const verificationApi = {
     });
   },
 
-  listProposals: (limit = 50): Promise<ActionProposalResponse[]> => {
-    return apiRequest<ActionProposalResponse[]>(`/verification/proposals?limit=${limit}`, {
+  listProposals: (applicationId?: string | null, limit = 50): Promise<ActionProposalResponse[]> => {
+    let url = `/verification/proposals?limit=${limit}`;
+    if (applicationId) {
+      url += `&application_id=${encodeURIComponent(applicationId)}`;
+    }
+    return apiRequest<ActionProposalResponse[]>(url, {
       method: 'GET',
     });
   },

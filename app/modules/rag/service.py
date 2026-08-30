@@ -64,9 +64,7 @@ def reindex_connection_endpoints(
     """
     Deletes existing vectors for an API connection and re-indexes them fresh.
     """
-    # Delete existing vectors for this connection
     delete_connection_index(owner_id=owner_id, connection_id=connection_id)
-    # Re-index
     return index_connection_endpoints(db=db, owner_id=owner_id, connection_id=connection_id)
 
 
@@ -87,12 +85,13 @@ def delete_connection_index(
 def semantic_search_catalog(
     owner_id: uuid.UUID,
     query: str,
+    application_id: Optional[uuid.UUID] = None,
     connection_id: Optional[uuid.UUID] = None,
     top_k: int = 5,
 ) -> List[Dict[str, Any]]:
     """
     Executes semantic search over indexed API endpoints for the authenticated user.
-    Optionally filters by connection_id.
+    Optionally filters by application_id and/or connection_id.
     """
     if not query or not query.strip():
         raise RAGException(message="Search query cannot be empty", status_code=400)
@@ -100,6 +99,8 @@ def semantic_search_catalog(
     query_vector = embedding_provider_instance.embed_text(query.strip())
 
     filters: Dict[str, Any] = {"owner_id": str(owner_id)}
+    if application_id:
+        filters["application_id"] = str(application_id)
     if connection_id:
         filters["connection_id"] = str(connection_id)
 
@@ -109,13 +110,13 @@ def semantic_search_catalog(
         filters=filters,
     )
 
-    # Format retrieval results for future agent consumption
     search_results = []
     for res in raw_results:
         meta = res["metadata"]
         search_results.append({
             "endpoint_id": meta.get("endpoint_id"),
             "connection_id": meta.get("connection_id"),
+            "application_id": meta.get("application_id"),
             "connection_name": meta.get("connection_name"),
             "method": meta.get("method"),
             "path": meta.get("path"),

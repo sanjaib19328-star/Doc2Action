@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 class AgentProcessRequest(BaseModel):
     query: str = Field(..., description="Natural language intent/command from the user")
+    application_id: Optional[str] = Field(None, description="Optional application ID context for RAG search and proposal")
     connection_id: Optional[str] = Field(None, description="Optional connection ID filter for RAG search")
     conversation_state: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Current agent state")
 

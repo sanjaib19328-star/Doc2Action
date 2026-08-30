@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 class APIConnectionCreate(BaseModel):
     specification_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = None
     name: Optional[str] = None
     base_url: Optional[str] = None
     auth_config: Dict[str, Any] = {}
@@ -35,6 +36,7 @@ class APIConnectionResponse(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
     specification_id: uuid.UUID
+    application_id: Optional[uuid.UUID] = None
     name: str
     base_url: str
     is_active: bool
