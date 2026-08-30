@@ -46,17 +46,35 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"]
+        default=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "https://doc2action.vercel.app",
+            "https://doc2-action.vercel.app",
+            "https://doc2action-frontend.vercel.app",
+        ]
+    )
+    CORS_ORIGIN_REGEX: str | None = Field(
+        default=r"^https:\/\/.*\.vercel\.app$",
+        description="Regex pattern for allowed origins like Vercel preview and production deployments",
     )
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
             return [i.strip() for i in v.split(",") if i.strip()]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+        elif isinstance(v, list):
+            return [str(i).strip() for i in v if str(i).strip()]
+        return v
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO")
