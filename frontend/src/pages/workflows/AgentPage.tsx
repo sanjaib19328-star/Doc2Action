@@ -175,7 +175,9 @@ export const AgentPage: React.FC = () => {
   const handleRejectProposal = async (proposalId: string) => {
     setProcessing(true);
     try {
-      const rejectedProposal = await verificationApi.rejectProposal(proposalId, 'User rejected in Agent workspace');
+      const rejectedProposal = await verificationApi.rejectProposal(proposalId, {
+        reason: 'User rejected in Agent workspace',
+      });
       setActiveProposal(rejectedProposal);
       setCurrentStep('REJECTED');
 
@@ -515,6 +517,13 @@ export const AgentPage: React.FC = () => {
                 <span className="text-slate-400 font-semibold block uppercase text-[10px]">Target Endpoint</span>
                 <p className="font-bold text-slate-900">[{selectedEndpoint.method}] {selectedEndpoint.path}</p>
                 <p className="text-[10px] text-slate-500 font-sans">{selectedEndpoint.summary || selectedEndpoint.id}</p>
+              </div>
+            )}
+
+            {extractedParams && Object.keys(extractedParams).length > 0 && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                <span className="text-slate-400 font-semibold block uppercase text-[10px]">Extracted Parameters</span>
+                <pre className="text-[10px] text-slate-700 font-mono whitespace-pre-wrap">{JSON.stringify(extractedParams, null, 2)}</pre>
               </div>
             )}
 
