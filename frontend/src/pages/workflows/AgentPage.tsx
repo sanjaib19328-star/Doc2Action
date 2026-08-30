@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { agentPlanner, AgentPlanner } from '../../agent/planner';
-import { agentTools } from '../../agent/tools';
-import { geminiClient } from '../../agent/client';
-import type { AgentConversationState, ChatMessage, AgentStep, AgentDecisionType } from '../../agent/types';
+import { agentApi } from '../../api/agent';
+import { verificationApi } from '../../api/verification';
 import type { ActionProposalResponse } from '../../types/api';
 import {
   Bot,
@@ -15,9 +13,19 @@ import {
   Clock,
   Terminal,
   Server,
-  Key,
   Cpu
 } from 'lucide-react';
+
+interface ChatMessage {
+  id: string;
+  sender: 'user' | 'agent';
+  text: string;
+  timestamp: string;
+  step?: string;
+  decisionType?: string;
+  searchResults?: any[];
+  proposal?: ActionProposalResponse;
+}
 
 export const AgentPage: React.FC = () => {
   const [inputQuery, setQueryInput] = useState('');
@@ -25,18 +33,24 @@ export const AgentPage: React.FC = () => {
     {
       id: 'msg-welcome',
       sender: 'agent',
-      text: 'Hello! I am your Doc2Action AI Agent. State your intent (e.g., "Process refund for charge ch_123 for $50" or "Get customer profile usr_999"), and I will perform RAG catalog search, analyze missing parameters, and generate an Action Proposal for your human review.',
+      text: 'Hello! I am your Doc2Action AI Agent. State your intent (e.g. "Find pets with available status" or "Get store inventory"), and I will perform RAG catalog search, analyze missing parameters, and generate an Action Proposal for your human review.',
       timestamp: new Date().toLocaleTimeString(),
       step: 'IDLE',
       decisionType: 'INFORMATION',
     },
   ]);
 
-  const [state, setState] = useState<AgentConversationState>(
-    AgentPlanner.createInitialState()
-  );
   const [processing, setProcessing] = useState(false);
   const [paramInputs, setParamInputs] = useState<Record<string, string>>({});
+  
+  // Active Agent State from Backend
+  const [currentStep, setCurrentStep] = useState<string>('IDLE');
+  const [currentIntent, setCurrentIntent] = useState<string>('');
+  const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
+  const [missingParams, setMissingParams] = useState<string[]>([]);
+  const [extractedParams, setExtractedParams] = useState<Record<string, any>>({});
+  const [activeProposal, setActiveProposal] = useState<ActionProposalResponse | null>(null);
+  const [llmActive, setLlmActive] = useState<boolean>(false);
 
   const addMessage = (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     const newMsg: ChatMessage = {
@@ -61,15 +75,32 @@ export const AgentPage: React.FC = () => {
     });
 
     try {
-      const updatedState = await agentPlanner.processUserQuery(userText, state, addMessage);
-      setState(updatedState);
+      const response = await agentApi.processQuery({ query: userText });
+      
+      setLlmActive(response.llm_configured);
+      setCurrentStep(response.step);
+      if (response.intent) setCurrentIntent(response.intent);
+      if (response.selected_endpoint) setSelectedEndpoint(response.selected_endpoint);
+      setMissingParams(response.missing_parameters || []);
+      setExtractedParams(response.extracted_parameters || {});
+      if (response.proposal) setActiveProposal(response.proposal);
+
+      addMessage({
+        sender: 'agent',
+        text: response.text_message,
+        step: response.step,
+        decisionType: response.decision_type,
+        searchResults: response.rag_hits,
+        proposal: response.proposal,
+      });
     } catch (err: any) {
       addMessage({
         sender: 'agent',
-        text: `[Error] ${err.message || 'Failed to process request.'}`,
+        text: `[Error] ${err.message || 'Failed to process agent query.'}`,
         step: 'FAILED',
         decisionType: 'ERROR',
       });
+      setCurrentStep('FAILED');
     } finally {
       setProcessing(false);
     }
@@ -77,61 +108,39 @@ export const AgentPage: React.FC = () => {
 
   const handleProvideParameters = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.selectedEndpoint || processing) return;
+    if (!selectedEndpoint || processing) return;
 
     setProcessing(true);
+    const paramSummary = Object.entries(paramInputs).map(([k, v]) => `${k}=${v}`).join(', ');
+    const combinedQuery = `${currentIntent} with parameters ${paramSummary}`;
+
     addMessage({
       sender: 'user',
       text: `Provided parameters: ${JSON.stringify(paramInputs)}`,
     });
 
     try {
-      const updatedState: AgentConversationState = {
-        ...state,
-        extractedParameters: {
-          ...state.extractedParameters,
-          path_params: { ...state.extractedParameters.path_params, ...paramInputs },
-        },
-        missingParameters: [],
-        step: 'PROPOSED',
-      };
+      const response = await agentApi.processQuery({ query: combinedQuery });
+      
+      setCurrentStep(response.step);
+      setMissingParams(response.missing_parameters || []);
+      if (response.proposal) setActiveProposal(response.proposal);
 
       addMessage({
         sender: 'agent',
-        text: `[Doc2Action Agent] Parameters received. Creating Human-in-the-Loop Action Proposal...`,
-        step: 'PROPOSED',
-        decisionType: 'CREATE_PROPOSAL',
-      });
-
-      const proposal = await agentTools.createActionProposal({
-        endpoint_id: state.selectedEndpoint.id,
-        intent_summary: `[Agent Proposal] ${state.intent}`,
-        path_params: updatedState.extractedParameters.path_params,
-        query_params: updatedState.extractedParameters.query_params,
-        body: updatedState.extractedParameters.body,
-        ttl_seconds: 300,
-      });
-
-      addMessage({
-        sender: 'agent',
-        text: `[Action Proposal Created] Proposal ID: ${proposal.proposal_id}\nStatus: PENDING CONFIRMATION\nTarget URL: ${proposal.target_url}`,
-        step: 'WAITING_FOR_CONFIRMATION',
-        proposal: proposal,
-        decisionType: 'WAIT_FOR_CONFIRMATION',
-      });
-
-      setState({
-        ...updatedState,
-        step: 'WAITING_FOR_CONFIRMATION',
-        activeProposal: proposal,
+        text: response.text_message,
+        step: response.step,
+        decisionType: response.decision_type,
+        proposal: response.proposal,
       });
     } catch (err: any) {
       addMessage({
         sender: 'agent',
-        text: `[Proposal Error] ${err.message || 'Failed to create proposal.'}`,
+        text: `[Error] ${err.message || 'Failed to submit parameters.'}`,
         step: 'FAILED',
         decisionType: 'ERROR',
       });
+      setCurrentStep('FAILED');
     } finally {
       setProcessing(false);
     }
@@ -140,7 +149,10 @@ export const AgentPage: React.FC = () => {
   const handleConfirmProposal = async (proposalId: string) => {
     setProcessing(true);
     try {
-      const confirmedProposal = await agentTools.confirmActionProposal(proposalId);
+      const confirmedProposal = await verificationApi.confirmProposal(proposalId);
+      setActiveProposal(confirmedProposal);
+      setCurrentStep('CONFIRMED');
+
       addMessage({
         sender: 'agent',
         text: `[Action Proposal Confirmed] Human confirmation registered for Proposal ID ${proposalId}. Ready for execution.`,
@@ -148,7 +160,6 @@ export const AgentPage: React.FC = () => {
         proposal: confirmedProposal,
         decisionType: 'WAIT_FOR_CONFIRMATION',
       });
-      setState((prev) => ({ ...prev, step: 'CONFIRMED', activeProposal: confirmedProposal }));
     } catch (err: any) {
       addMessage({
         sender: 'agent',
@@ -164,7 +175,10 @@ export const AgentPage: React.FC = () => {
   const handleRejectProposal = async (proposalId: string) => {
     setProcessing(true);
     try {
-      const rejectedProposal = await agentTools.rejectActionProposal(proposalId, 'User rejected in Agent workspace');
+      const rejectedProposal = await verificationApi.rejectProposal(proposalId, 'User rejected in Agent workspace');
+      setActiveProposal(rejectedProposal);
+      setCurrentStep('REJECTED');
+
       addMessage({
         sender: 'agent',
         text: `[Action Proposal Rejected] Proposal ID ${proposalId} has been rejected by user.`,
@@ -172,7 +186,6 @@ export const AgentPage: React.FC = () => {
         proposal: rejectedProposal,
         decisionType: 'INFORMATION',
       });
-      setState((prev) => ({ ...prev, step: 'REJECTED', activeProposal: rejectedProposal }));
     } catch (err: any) {
       addMessage({
         sender: 'agent',
@@ -195,7 +208,9 @@ export const AgentPage: React.FC = () => {
         decisionType: 'EXECUTE',
       });
 
-      const execResultProposal: ActionProposalResponse = await agentTools.executeConfirmedAction(proposalId);
+      const execResultProposal = await verificationApi.executeProposal(proposalId);
+      setActiveProposal(execResultProposal);
+      setCurrentStep('COMPLETED');
 
       addMessage({
         sender: 'agent',
@@ -204,12 +219,6 @@ export const AgentPage: React.FC = () => {
         proposal: execResultProposal,
         decisionType: 'RESULT',
       });
-
-      setState((prev) => ({
-        ...prev,
-        step: 'COMPLETED',
-        activeProposal: execResultProposal,
-      }));
     } catch (err: any) {
       addMessage({
         sender: 'agent',
@@ -222,9 +231,9 @@ export const AgentPage: React.FC = () => {
     }
   };
 
-  const renderDecisionBadge = (type?: AgentDecisionType) => {
+  const renderDecisionBadge = (type?: string) => {
     if (!type) return null;
-    const badgeMap: Record<AgentDecisionType, { label: string; color: string }> = {
+    const badgeMap: Record<string, { label: string; color: string }> = {
       INFORMATION: { label: 'Info', color: 'bg-slate-100 text-slate-700 border-slate-200' },
       SEARCH_API: { label: 'RAG Search', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
       REQUEST_PARAMETERS: { label: 'Parameters Needed', color: 'bg-amber-100 text-amber-800 border-amber-200' },
@@ -244,7 +253,7 @@ export const AgentPage: React.FC = () => {
     );
   };
 
-  const renderStepBadge = (step?: AgentStep) => {
+  const renderStepBadge = (step?: string) => {
     if (!step || step === 'IDLE') return null;
     const badgeColors: Record<string, string> = {
       SEARCHING: 'bg-sky-100 text-sky-800 border-sky-200',
@@ -271,21 +280,21 @@ export const AgentPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">AI Agent Workspace</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Real Gemini LLM + RAG Knowledge Base + Human-in-the-Loop Action Proposal workflow.
+            Real Backend Agent Router + RAG Knowledge Base + Human-in-the-Loop Action Proposals.
           </p>
         </div>
 
         {/* Gemini API Key Status Badge */}
         <div className="flex items-center space-x-2">
-          {geminiClient.isConfigured() ? (
+          {llmActive ? (
             <span className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
-              <Key className="w-3.5 h-3.5 text-emerald-600" />
+              <Cpu className="w-3.5 h-3.5 text-emerald-600" />
               <span>Gemini LLM Active</span>
             </span>
           ) : (
-            <span className="px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
-              <Key className="w-3.5 h-3.5 text-amber-600" />
-              <span>Gemini Unconfigured (RAG Fallback)</span>
+            <span className="px-3 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-full text-xs font-semibold flex items-center space-x-1.5">
+              <Cpu className="w-3.5 h-3.5 text-sky-600" />
+              <span>RAG Agent Active</span>
             </span>
           )}
         </div>
@@ -302,10 +311,10 @@ export const AgentPage: React.FC = () => {
               </div>
               <div>
                 <h2 className="text-sm font-bold">Doc2Action API Agent</h2>
-                <p className="text-[10px] text-slate-400">Gemini LLM + RAG Vector Store + Human Verification</p>
+                <p className="text-[10px] text-slate-400">RAG Catalog Vector Store + Verification Engine</p>
               </div>
             </div>
-            {renderStepBadge(state.step)}
+            {renderStepBadge(currentStep)}
           </div>
 
           {/* Messages Feed */}
@@ -418,7 +427,7 @@ export const AgentPage: React.FC = () => {
           </div>
 
           {/* Missing Parameter Input Form if waiting for input */}
-          {state.step === 'WAITING_FOR_INPUT' && state.missingParameters.length > 0 && (
+          {currentStep === 'WAITING_FOR_INPUT' && missingParams.length > 0 && (
             <div className="p-4 bg-amber-50 border-t border-amber-200 space-y-3">
               <p className="text-xs font-bold text-amber-900 flex items-center space-x-1">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
@@ -427,7 +436,7 @@ export const AgentPage: React.FC = () => {
 
               <form onSubmit={handleProvideParameters} className="space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {state.missingParameters.map((param) => (
+                  {missingParams.map((param) => (
                     <div key={param}>
                       <label className="block text-[10px] font-bold text-slate-700 uppercase">{param}</label>
                       <input
@@ -458,7 +467,7 @@ export const AgentPage: React.FC = () => {
               type="text"
               value={inputQuery}
               onChange={(e) => setQueryInput(e.target.value)}
-              placeholder="Tell the agent what to do (e.g. Refund charge ch_123 for $50)..."
+              placeholder="Tell the agent what to do (e.g. Find pets with available status)..."
               disabled={processing}
               className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white"
             />
@@ -485,35 +494,35 @@ export const AgentPage: React.FC = () => {
           <div className="space-y-4 text-xs font-mono">
             <div>
               <span className="text-slate-400 font-semibold block uppercase text-[10px]">Current Step</span>
-              <div className="mt-1">{renderStepBadge(state.step)}</div>
+              <div className="mt-1">{renderStepBadge(currentStep)}</div>
             </div>
 
             <div>
-              <span className="text-slate-400 font-semibold block uppercase text-[10px]">LLM Provider</span>
+              <span className="text-slate-400 font-semibold block uppercase text-[10px]">Backend Engine</span>
               <p className="font-bold text-slate-800 mt-0.5 flex items-center space-x-1">
                 <Cpu className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{state.llmConfigured ? 'Gemini 1.5 Pro' : 'RAG Fallback Engine'}</span>
+                <span>{llmActive ? 'Gemini 1.5 Pro' : 'FastAPI RAG Agent Engine'}</span>
               </p>
             </div>
 
             <div>
               <span className="text-slate-400 font-semibold block uppercase text-[10px]">Intent</span>
-              <p className="font-semibold text-slate-900 mt-1 font-sans">{state.intent || 'None'}</p>
+              <p className="font-semibold text-slate-900 mt-1 font-sans">{currentIntent || 'None'}</p>
             </div>
 
-            {state.selectedEndpoint && (
+            {selectedEndpoint && (
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                 <span className="text-slate-400 font-semibold block uppercase text-[10px]">Target Endpoint</span>
-                <p className="font-bold text-slate-900">[{state.selectedEndpoint.method}] {state.selectedEndpoint.path}</p>
-                <p className="text-[10px] text-slate-500 font-sans">{state.selectedEndpoint.summary || state.selectedEndpoint.operation_id}</p>
+                <p className="font-bold text-slate-900">[{selectedEndpoint.method}] {selectedEndpoint.path}</p>
+                <p className="text-[10px] text-slate-500 font-sans">{selectedEndpoint.summary || selectedEndpoint.id}</p>
               </div>
             )}
 
-            {state.activeProposal && (
+            {activeProposal && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1">
                 <span className="text-amber-800 font-semibold block uppercase text-[10px]">Active Proposal ID</span>
-                <p className="font-bold text-amber-950 truncate">{state.activeProposal.proposal_id}</p>
-                <p className="text-[10px] text-amber-700">Expires: {new Date(state.activeProposal.expires_at).toLocaleTimeString()}</p>
+                <p className="font-bold text-amber-950 truncate">{activeProposal.proposal_id}</p>
+                <p className="text-[10px] text-amber-700">Expires: {new Date(activeProposal.expires_at).toLocaleTimeString()}</p>
               </div>
             )}
           </div>

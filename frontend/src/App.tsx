@@ -8,6 +8,7 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { ApiDiscoveryPage } from './pages/api-discovery/ApiDiscoveryPage';
 import { ApiCatalogPage } from './pages/api-catalog/ApiCatalogPage';
+import { ConnectionDetailPage } from './pages/api-catalog/ConnectionDetailPage';
 import { RagPage } from './pages/rag/RagPage';
 import { AgentPage } from './pages/workflows/AgentPage';
 import { VerificationPage } from './pages/workflows/VerificationPage';
@@ -29,6 +30,7 @@ export const App: React.FC = () => {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/api-discovery" element={<ApiDiscoveryPage />} />
             <Route path="/api-catalog" element={<ApiCatalogPage />} />
+            <Route path="/api-catalog/:connectionId" element={<ConnectionDetailPage />} />
             <Route path="/rag" element={<RagPage />} />
             <Route path="/agent" element={<AgentPage />} />
             <Route path="/verification" element={<VerificationPage />} />

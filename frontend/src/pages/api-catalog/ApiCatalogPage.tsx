@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { catalogApi } from '../../api/catalog';
 import { ragApi } from '../../api/rag';
 import type { APIConnection, APIEndpoint } from '../../types/api';
-import { Database, Trash2, Layers, Cpu, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Database, Trash2, Layers, Cpu, CheckCircle2, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export const ApiCatalogPage: React.FC = () => {
   const [connections, setConnections] = useState<APIConnection[]>([]);
@@ -187,9 +188,19 @@ export const ApiCatalogPage: React.FC = () => {
               {/* Header & Actions */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    {connections.find((c) => c.id === selectedConnectionId)?.name}
-                  </h2>
+                  <div className="flex items-center space-x-2">
+                    <h2 className="text-lg font-bold text-slate-900">
+                      {connections.find((c) => c.id === selectedConnectionId)?.name}
+                    </h2>
+                    <Link
+                      to={`/api-catalog/${selectedConnectionId}`}
+                      className="text-xs text-sky-600 hover:text-sky-700 font-semibold flex items-center"
+                      title="Open full connection page"
+                    >
+                      <span>Full View</span>
+                      <ExternalLink className="w-3.5 h-3.5 ml-1" />
+                    </Link>
+                  </div>
                   <p className="text-xs font-mono text-slate-500">
                     {connections.find((c) => c.id === selectedConnectionId)?.base_url}
                   </p>

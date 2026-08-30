@@ -106,10 +106,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
-                  `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-sky-600 text-white shadow-sm'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${isActive
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                   }`
                 }
               >
@@ -148,10 +147,9 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
                     to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
-                      `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg ${
-                        isActive
-                          ? 'bg-sky-600 text-white'
-                          : 'text-slate-300 hover:bg-slate-800'
+                      `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg ${isActive
+                        ? 'bg-sky-600 text-white'
+                        : 'text-slate-300 hover:bg-slate-800'
                       }`
                     }
                   >
